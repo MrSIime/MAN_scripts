@@ -1,70 +1,46 @@
 import os
-import coder
+import ecoder
 import decoder
 
 def main():
-    while True:
-        print("\n--- Steganography Tool ---")
-        print("1. Encode a file into an image")
-        print("2. Decode a file from an image")
-        print("3. Exit")
+    print("=== Steganography Tool (LSB + Seed) ===")
+    print("1. Сховати текст в картинку")
+    print("2. Дістати текст з картинки")
+    print("0. Вихід")
+    
+    choice = input("Ваш вибір: ").strip()
 
-        choice = input("Enter your choice (1, 2, or 3): ")
+    if choice == "1":
+        img_path = input("Шлях до картинки (наприклад, image.png): ").strip()
+        txt_path = input("Шлях до тексту (наприклад, text.txt): ").strip()
+        out_path = input("Назва вихідного файлу (наприклад, secret.png): ").strip()
+        
+        if not out_path: 
+            out_path = "secret_image.png"
+            
+        try:
+            seed = int(input("Придумайте цифровий ключ (seed): "))
+            ecoder.encode(img_path, txt_path, out_path, seed)
+        except ValueError:
+            print("[Помилка] Ключ має бути цілим числом.")
 
-        if choice == '1':
-            encode_process()
-        elif choice == '2':
-            decode_process()
-        elif choice == '3':
-            print("Exiting the program. Goodbye!")
-            break
-        else:
-            print("Invalid choice. Please enter 1, 2, or 3.")
-
-def encode_process():
-    print("\n--- Encoding Process ---")
-    try:
-        image_path = input("Enter the path to the original image (e.g., input.jpg): ")
-        file_path = input("Enter the path to the file to hide (e.g., secret.txt): ")
-        output_path = input("Enter the path for the output image (e.g., output.png): ")
-
-        if not all([image_path, file_path, output_path]):
-            print("All paths must be provided. Please try again.")
-            return
-
-        if not os.path.exists(image_path):
-            print(f"Error: The image file '{image_path}' was not found.")
-            return
-
-        if not os.path.exists(file_path):
-            print(f"Error: The file to hide '{file_path}' was not found.")
-            return
-
-        coder.coder(image_path, file_path, output_path)
-        print(f"Successfully encoded '{file_path}' into '{output_path}'.")
-
-    except Exception as e:
-        print(f"An error occurred during encoding: {e}")
-
-def decode_process():
-    print("\n--- Decoding Process ---")
-    try:
-        image_path = input("Enter the path to the image to decode (e.g., output.png): ")
-        output_path = input("Enter the path for the decoded file (e.g., decoded.txt): ")
-
-        if not all([image_path, output_path]):
-            print("All paths must be provided. Please try again.")
-            return
-
-        if not os.path.exists(image_path):
-            print(f"Error: The image file '{image_path}' was not found.")
-            return
-
-        decoder.decoder(image_path, output_path)
-        print(f"Successfully decoded a file from '{image_path}' to '{output_path}'.")
-
-    except Exception as e:
-        print(f"An error occurred during decoding: {e}")
+    elif choice == "2":
+        img_path = input("Шлях до картинки з секретом: ").strip()
+        out_txt = input("Куди зберегти текст (наприклад, decoded.txt): ").strip()
+        
+        if not out_txt:
+            out_txt = "decoded_text.txt"
+            
+        try:
+            seed = int(input("Введіть ключ (seed), яким шифрували: "))
+            decoder.decode(img_path, out_txt, seed)
+        except ValueError:
+            print("[Помилка] Ключ має бути цілим числом.")
+            
+    elif choice == "0":
+        print("До побачення!")
+    else:
+        print("Невірний вибір.")
 
 if __name__ == "__main__":
     main()
