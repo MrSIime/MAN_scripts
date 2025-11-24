@@ -1,26 +1,13 @@
 import numpy as np
 from PIL import Image
 import random
-import os
 
-def decoder(image_path: str, output_path: str) -> None:
+def decode(image_path: str, output_text_path: str, manual_seed: int) -> None:
+    # --- Допоміжні функції ---
     def bits_to_bytes(bits: str) -> bytes:
-        b = bytearray()
-        for i in range(0, len(bits), 8):
-            b.append(int(bits[i:i+8], 2))
-        return bytes(b)
+        return bytes(int(bits[i:i+8], 2) for i in range(0, len(bits), 8))
 
-    def get_bits_from_pixels(px: np.ndarray, n_bits: int) -> str:
-        flat = px.reshape(-1, 3)
-        bits = []
-        for pix in flat:
-            for ch in pix:
-                bits.append(str(ch % 2))
-                if len(bits) >= n_bits:
-                    return "".join(bits)
-        return "".join(bits)
-
-    def inverse_shuffle_bytes(data: bytes, key_bytes: bytes) -> bytes:
+    def unshuffle_bytes(data: bytes, key_bytes: bytes) -> bytes:
         rng = random.Random(int.from_bytes(key_bytes, "big"))
         idx = list(range(len(data)))
         rng.shuffle(idx)
@@ -28,28 +15,61 @@ def decoder(image_path: str, output_path: str) -> None:
         for new_pos, old_pos in enumerate(idx):
             original[old_pos] = data[new_pos]
         return bytes(original)
-
+        
     def xor_bytes(data: bytes, key_bytes: bytes) -> bytes:
         return bytes([b ^ key_bytes[i % len(key_bytes)] for i, b in enumerate(data)])
 
-    img = Image.open(image_path).convert("RGB")
+    # --- Основна логіка декодера ---
+    try:
+        img = Image.open(image_path).convert("RGB")
+    except FileNotFoundError:
+        print(f"[Помилка] Файл зображення '{image_path}' не знайдено.")
+        return
+
+    print("Зчитування пікселів...")
     px = np.array(img, dtype=np.uint8)
-
-    header_bits = get_bits_from_pixels(px, 64)
-    header_bytes = bits_to_bytes(header_bits)
-    key_bytes = header_bytes[:4]
-    data_len = int.from_bytes(header_bytes[4:], "big")
-
-    data_bits_len = data_len * 8
-    all_bits = get_bits_from_pixels(px, 64 + data_bits_len)
-    encrypted_bits = all_bits[64:64 + data_bits_len]
-    encrypted_bytes = bits_to_bytes(encrypted_bits)
-
-    shuffled_bytes = xor_bytes(encrypted_bytes, key_bytes)
-    original_bytes = inverse_shuffle_bytes(shuffled_bytes, key_bytes)
+    flat = px.reshape(-1, 3)
     
-    recovered_text = original_bytes.decode("utf-8")
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(recovered_text)
+    # Витягуємо LSB (найменш значущі біти)
+    extracted_bits = []
+    # Нам не обов'язково читати всі пікселі, але для простоти читаємо потік
+    # Оптимізація: читаємо лише стільки, скільки треба (спочатку заголовок)
+    
+    # Перетворюємо весь масив пікселів в один довгий рядок бітів LSB
+    # (Це може бути повільно на великих фото, але надійно)
+    extracted_bits_str = "".join([str(val % 2) for val in flat.flatten()])
 
-    print(f"Recovered text saved to {output_path}")
+    # 1. Читаємо перші 32 біти (довжина даних)
+    len_bits = extracted_bits_str[:32]
+    length_bytes = bits_to_bytes(len_bits)
+    text_length = int.from_bytes(length_bytes, "big")
+    
+    # Перевірка на адекватність довжини
+    if text_length <= 0 or text_length * 8 > len(extracted_bits_str) - 32:
+        print("[Помилка] Не вдалося коректно прочитати довжину даних. Можливо, неправильний файл або він порожній.")
+        return
+
+    print(f"Виявлено приховані дані розміром {text_length} байт.")
+
+    # 2. Читаємо саме тіло даних
+    start = 32
+    end = start + (text_length * 8)
+    data_bits = extracted_bits_str[start:end]
+    encrypted_data = bits_to_bytes(data_bits)
+
+    # 3. Відновлюємо ключ
+    key_bytes = (manual_seed % (2**32)).to_bytes(4, "big")
+
+    # 4. Розшифровуємо
+    try:
+        decrypted_xor = xor_bytes(encrypted_data, key_bytes)
+        original_data = unshuffle_bytes(decrypted_xor, key_bytes)
+        
+        with open(output_text_path, "w", encoding="utf-8") as f:
+            f.write(original_data.decode("utf-8"))
+        print(f"[Успіх] Текст збережено у файл '{output_text_path}'.")
+        
+    except UnicodeDecodeError:
+        print("[Помилка] Текст розшифровано некоректно. Ви ввели правильний seed?")
+    except Exception as e:
+        print(f"[Помилка] {e}")

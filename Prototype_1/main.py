@@ -1,6 +1,6 @@
 import os
-import ecoder
-import Prototype_1.decoder as decoder
+import encoder
+import decoder as decoder
 
 def main():
     print("=== Steganography Tool (LSB + Seed) ===")
@@ -20,7 +20,7 @@ def main():
             
         try:
             seed = int(input("Придумайте цифровий ключ (seed): "))
-            ecoder.encode(img_path, txt_path, out_path, seed)
+            encoder.encode(img_path, txt_path, out_path, seed)
         except ValueError:
             print("[Помилка] Ключ має бути цілим числом.")
 
