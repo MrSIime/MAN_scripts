@@ -1,6 +1,6 @@
 import os
 import ecoder
-import decoder
+import Prototype_1.decoder as decoder
 
 def main():
     print("=== Steganography Tool (LSB + Seed) ===")
