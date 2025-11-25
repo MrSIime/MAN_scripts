@@ -33,3 +33,7 @@ ENV/
 .idea/
 *.swp
 *.swo
+
+# Text and image files
+*.txt
+*.png
