@@ -1,4 +1,4 @@
-import encoder  # Тепер імпортуємо encoder, а не ecoder
+import encoder
 import decoder
 import os
 
@@ -16,11 +16,9 @@ def main():
         txt_path = input("Шлях до тексту (наприклад, text.txt): ").strip()
         out_path = input("Назва нової картинки (наприклад, secret.png): ").strip()
         
-        # Якщо користувач просто натиснув Enter, даємо стандартну назву
         if not out_path: 
             out_path = "secret_lsb.png"
-        
-        # Викликаємо функцію з encoder.py
+
         try:
             encoder.encode(img_path, txt_path, out_path)
         except AttributeError:
@@ -35,7 +33,6 @@ def main():
         if not out_txt: 
             out_txt = "decoded_simple.txt"
         
-        # Викликаємо функцію з decoder.py
         try:
             decoder.decode(img_path, out_txt)
         except Exception as e:

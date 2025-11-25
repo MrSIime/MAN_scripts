@@ -3,7 +3,7 @@ from PIL import Image
 import random
 
 def decode(image_path: str, output_text_path: str, manual_seed: int) -> None:
-    # --- Допоміжні функції ---
+    
     def bits_to_bytes(bits: str) -> bytes:
         return bytes(int(bits[i:i+8], 2) for i in range(0, len(bits), 8))
 
@@ -19,7 +19,6 @@ def decode(image_path: str, output_text_path: str, manual_seed: int) -> None:
     def xor_bytes(data: bytes, key_bytes: bytes) -> bytes:
         return bytes([b ^ key_bytes[i % len(key_bytes)] for i, b in enumerate(data)])
 
-    # --- Основна логіка декодера ---
     try:
         img = Image.open(image_path).convert("RGB")
     except FileNotFoundError:
@@ -29,38 +28,28 @@ def decode(image_path: str, output_text_path: str, manual_seed: int) -> None:
     print("Зчитування пікселів...")
     px = np.array(img, dtype=np.uint8)
     flat = px.reshape(-1, 3)
-    
-    # Витягуємо LSB (найменш значущі біти)
+
     extracted_bits = []
-    # Нам не обов'язково читати всі пікселі, але для простоти читаємо потік
-    # Оптимізація: читаємо лише стільки, скільки треба (спочатку заголовок)
-    
-    # Перетворюємо весь масив пікселів в один довгий рядок бітів LSB
-    # (Це може бути повільно на великих фото, але надійно)
+
     extracted_bits_str = "".join([str(val % 2) for val in flat.flatten()])
 
-    # 1. Читаємо перші 32 біти (довжина даних)
     len_bits = extracted_bits_str[:32]
     length_bytes = bits_to_bytes(len_bits)
     text_length = int.from_bytes(length_bytes, "big")
-    
-    # Перевірка на адекватність довжини
+
     if text_length <= 0 or text_length * 8 > len(extracted_bits_str) - 32:
         print("[Помилка] Не вдалося коректно прочитати довжину даних. Можливо, неправильний файл або він порожній.")
         return
 
     print(f"Виявлено приховані дані розміром {text_length} байт.")
 
-    # 2. Читаємо саме тіло даних
     start = 32
     end = start + (text_length * 8)
     data_bits = extracted_bits_str[start:end]
     encrypted_data = bits_to_bytes(data_bits)
 
-    # 3. Відновлюємо ключ
     key_bytes = (manual_seed % (2**32)).to_bytes(4, "big")
 
-    # 4. Розшифровуємо
     try:
         decrypted_xor = xor_bytes(encrypted_data, key_bytes)
         original_data = unshuffle_bytes(decrypted_xor, key_bytes)

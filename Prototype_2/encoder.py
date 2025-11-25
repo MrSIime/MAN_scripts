@@ -3,12 +3,11 @@ from PIL import Image
 import random
 
 def encode(image_path: str, text_path: str, output_path: str, manual_seed: int) -> None:
-    # --- Допоміжні функції ---
+
     def enforce_parity(value: int, target_parity: int) -> int:
         if value % 2 == target_parity:
             return value
         else:
-            # Змінюємо значення на 1, щоб парність збіглася
             if target_parity == 0:
                 return value - 1 if value > 0 else 0
             else:
@@ -37,7 +36,6 @@ def encode(image_path: str, text_path: str, output_path: str, manual_seed: int) 
     def bytes_to_bits(data: bytes) -> str:
         return "".join(f"{b:08b}" for b in data)
 
-    # --- Основна логіка кодера ---
     try:
         img = Image.open(image_path).convert("RGB")
     except FileNotFoundError:
@@ -55,17 +53,13 @@ def encode(image_path: str, text_path: str, output_path: str, manual_seed: int) 
     w, h = img.size
     total_capacity_bits = w * h * 3
 
-    # Генеруємо ключ із ручного seed
     key_bytes = (manual_seed % (2**32)).to_bytes(4, "big")
 
-    # Шифруємо дані
     shuffled = shuffle_bytes(data_bytes, key_bytes)
     encrypted = xor_bytes(shuffled, key_bytes)
 
-    # Формуємо заголовок (тільки довжина даних)
     length_bytes = len(data_bytes).to_bytes(4, "big")
     
-    # Повний рядок бітів для запису
     total_bits_string = bytes_to_bits(length_bytes) + bytes_to_bits(encrypted)
 
     if total_capacity_bits >= len(total_bits_string):
