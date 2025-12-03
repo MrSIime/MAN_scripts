@@ -9,10 +9,7 @@ def decode(image_path: str, output_text_path: str) -> None:
     try:
         img = Image.open(image_path).convert("RGB")
     except FileNotFoundError:
-        print(f"[Помилка] Картинку '{image_path}' не знайдено.")
         return
-
-    print("Зчитування даних...")
     
     px = np.array(img, dtype=np.uint8)
     flat_px = px.flatten()
@@ -23,10 +20,7 @@ def decode(image_path: str, output_text_path: str) -> None:
     length_bytes = bits_to_bytes(header_bits)
     text_length = int.from_bytes(length_bytes, "big")
 
-    print(f"Знайдена довжина тексту: {text_length} байт")
-
     if text_length <= 0 or (text_length * 8) + 32 > len(extracted_bits_str):
-        print("[Помилка] Некоректна довжина даних. Можливо, файл пошкоджено або в ньому немає прихованого тексту.")
         return
 
     start = 32
@@ -39,6 +33,5 @@ def decode(image_path: str, output_text_path: str) -> None:
         decoded_text = text_bytes.decode("utf-8")
         with open(output_text_path, "w", encoding="utf-8") as f:
             f.write(decoded_text)
-        print(f"[Успіх] Текст збережено у '{output_text_path}'")
     except UnicodeDecodeError:
-        print("[Помилка] Дані витягнуто, але це не схоже на текст (помилка кодування).")
+        return
