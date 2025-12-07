@@ -218,9 +218,28 @@ async def process_encode(user_id: int, state: FSMContext):
     user_dir = TMP_DIR / str(user_id)
     in_image = data['image_path']
     in_text = data.get('text_path')
+
     out_image = user_dir / 'out_image.png'
 
     try:
+        # --- Перевірка чи текст вміститься у зображення ---
+        from PIL import Image
+        import numpy as np
+        # Відкриваємо зображення
+        img = Image.open(in_image).convert("RGB")
+        px = np.array(img, dtype=np.uint8)
+        flat_px = px.flatten()
+        # Читаємо текст
+        text_bytes = Path(in_text).read_bytes()
+        length_bytes = len(text_bytes).to_bytes(4, "big")
+        full_data = length_bytes + text_bytes
+        bits_to_hide = "".join(f"{b:08b}" for b in full_data)
+        total_bits_count = len(bits_to_hide)
+        if total_bits_count > len(flat_px):
+            await bot.send_message(user_id, f'Текст ({len(text_bytes)} байт) не вміститься у це зображення!\nМожна вбудувати максимум {(len(flat_px)-32)//8} байт.')
+            await state.clear()
+            return
+
         # викликаємо функцію encode з модулю; різні прототипи мають різні сигнатури
         if PROTOTYPES[proto]['needs_key']:
             key = data.get('key')
@@ -244,7 +263,7 @@ async def process_decode(user_id: int, state: FSMContext):
     module = import_module_for(proto, 'decoder')
     user_dir = TMP_DIR / str(user_id)
     in_image = data['image_path']
-    out_text = user_dir / 'decoded_output'
+    out_text = user_dir / 'decoded_output.txt'
 
     try:
         if PROTOTYPES[proto]['needs_key']:
@@ -283,7 +302,28 @@ async def cancel(message: Message, state: FSMContext):
 async def main():
     print('Starting bot...')
     cleanup_old_files(max_age_hours=24)  # Видалити файли старше 24 годин
-    await dp.start_polling(bot)
+
+    # Автоматичні повторні спроби старту polling при мережевих або тимчасових помилках.
+    # Використовуємо експоненційний backoff з лімітом паузи.
+    backoff = 1.0
+    max_backoff = 60.0
+    attempt = 0
+    while True:
+        try:
+            attempt += 1
+            print(f'Polling attempt #{attempt} (backoff={backoff}s)')
+            await dp.start_polling(bot)
+            # Якщо polling завершився без винятку, вийдемо
+            break
+        except (KeyboardInterrupt, SystemExit):
+            print('Received termination signal, exiting.')
+            raise
+        except Exception as e:
+            # Логування помилки і очікування перед новою спробою
+            print(f'Polling failed (attempt {attempt}): {e}')
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
+            continue
 
 
 if __name__ == '__main__':
