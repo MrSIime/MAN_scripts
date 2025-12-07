@@ -3,13 +3,15 @@ import sys
 import importlib
 from pathlib import Path
 import asyncio
+import shutil
+from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram import Router
 
 # --- Configuration ---
@@ -37,11 +39,13 @@ class Form(StatesGroup):
     waiting_key = State()
 
 
-def import_module_for(proto_id: str):
+def import_module_for(proto_id: str, module_name: str = 'encoder'):
+    """Import encoder or decoder module from a Prototype directory."""
     info = PROTOTYPES.get(proto_id)
     if not info:
         return None
-    return importlib.import_module(info['module'])
+    proto_module_path = f"{info['module']}.{module_name}"
+    return importlib.import_module(proto_module_path)
 
 
 def is_uncompressed_image(message: Message) -> bool:
@@ -50,6 +54,28 @@ def is_uncompressed_image(message: Message) -> bool:
     if message.document and message.document.mime_type and message.document.mime_type.startswith('image'):
         return True
     return False
+
+
+def get_text_from_file(file_path: str) -> str:
+    """Прочитати текст з файлу або повернути порожній рядок."""
+    try:
+        return Path(file_path).read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        return ''
+
+
+def cleanup_old_files(max_age_hours: int = 24):
+    """Видалити папки користувачів старше max_age_hours днів."""
+    try:
+        current_time = datetime.now()
+        for user_dir in TMP_DIR.iterdir():
+            if user_dir.is_dir():
+                mod_time = datetime.fromtimestamp(user_dir.stat().st_mtime)
+                if current_time - mod_time > timedelta(hours=max_age_hours):
+                    shutil.rmtree(user_dir, ignore_errors=True)
+                    print(f'Видалено стару папку: {user_dir}')
+    except Exception as e:
+        print(f'Помилка очищення: {e}')
 
 
 bot = Bot(token=API_TOKEN)
@@ -61,13 +87,16 @@ dp.include_router(router)
 
 @router.message(Command('start'))
 async def cmd_start(message: Message, state: FSMContext):
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton('Prototype 1', callback_data='proto_1'),
-        types.InlineKeyboardButton('Prototype 2', callback_data='proto_2'),
-        types.InlineKeyboardButton('Prototype 3', callback_data='proto_3'),
-        types.InlineKeyboardButton('Prototype 4', callback_data='proto_4'),
-    )
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text='Prototype 1', callback_data='proto_1'),
+            types.InlineKeyboardButton(text='Prototype 2', callback_data='proto_2'),
+        ],
+        [
+            types.InlineKeyboardButton(text='Prototype 3', callback_data='proto_3'),
+            types.InlineKeyboardButton(text='Prototype 4', callback_data='proto_4'),
+        ]
+    ])
     await message.answer('Оберіть прототип:', reply_markup=kb)
     await state.set_state(Form.choosing_proto)
 
@@ -77,9 +106,10 @@ async def proto_chosen(cb: CallbackQuery, state: FSMContext):
     proto_id = cb.data.split('_', 1)[1]
     await state.update_data(proto=proto_id)
 
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton('Encode', callback_data='action_encode'))
-    kb.add(types.InlineKeyboardButton('Decode', callback_data='action_decode'))
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text='Encode', callback_data='action_encode')],
+        [types.InlineKeyboardButton(text='Decode', callback_data='action_decode')]
+    ])
 
     # edit original message
     if cb.message:
@@ -103,14 +133,15 @@ async def receive_image(message: Message, state: FSMContext):
         await message.reply('Будь ласка, надішліть зображення як документ без стиснення (натисніть "Attach file" -> файл, не фото).')
         return
 
-    data = await state.get_data()
     user_dir = TMP_DIR / str(message.from_user.id)
     user_dir.mkdir(parents=True, exist_ok=True)
 
     # зберігаємо вхідне зображення
     filename = message.document.file_name or 'input_image'
     in_path = user_dir / filename
-    await message.document.download(destination_file=str(in_path))
+    
+    # Download file using aiogram 3.x API
+    await message.bot.download(file=message.document.file_id, destination=str(in_path))
 
     await state.update_data(image_path=str(in_path))
 
@@ -135,19 +166,18 @@ async def receive_image(message: Message, state: FSMContext):
 async def receive_text(message: Message, state: FSMContext):
     user_dir = TMP_DIR / str(message.from_user.id)
     user_dir.mkdir(parents=True, exist_ok=True)
-    text_path = user_dir / 'input_text.bin'
+    text_path = user_dir / 'input_text.txt'
 
     if message.text and not message.document:
         # текст у повідомленні
-        (user_dir / 'text_message.txt').write_text(message.text, encoding='utf-8')
-        text_path = user_dir / 'text_message.txt'
+        text_path.write_text(message.text, encoding='utf-8')
     elif message.document:
-        # файл -- зберігаємо бінарно
-        filename = message.document.file_name or 'text_input'
+        # файл -- зберігаємо
+        filename = message.document.file_name or 'text_input.txt'
         text_path = user_dir / filename
-        await message.document.download(destination_file=str(text_path))
+        await message.bot.download(file=message.document.file_id, destination=str(text_path))
     else:
-        await message.reply('Надішліть текст або текстовий файл.')
+        await message.reply('Надішліть текст або текстовий файл (.txt).')
         return
 
     await state.update_data(text_path=str(text_path))
@@ -184,7 +214,7 @@ async def receive_key(message: Message, state: FSMContext):
 async def process_encode(user_id: int, state: FSMContext):
     data = await state.get_data()
     proto = data['proto']
-    module = import_module_for(proto)
+    module = import_module_for(proto, 'encoder')
     user_dir = TMP_DIR / str(user_id)
     in_image = data['image_path']
     in_text = data.get('text_path')
@@ -200,8 +230,8 @@ async def process_encode(user_id: int, state: FSMContext):
             module.encode(in_image, in_text, str(out_image))
 
         # надсилаємо файл як документ, щоб Telegram не стиснув його
-        await bot.send_document(user_id, types.InputFile(str(out_image)))
-        await bot.send_message(user_id, 'Готово — результат надіслано як файл (без стиснення).')
+        await bot.send_document(user_id, FSInputFile(str(out_image)))
+        await bot.send_message(user_id, 'Готово — закодоване зображення надіслано.')
     except Exception as e:
         await bot.send_message(user_id, f'Під час кодування сталася помилка: {e}')
     finally:
@@ -211,7 +241,7 @@ async def process_encode(user_id: int, state: FSMContext):
 async def process_decode(user_id: int, state: FSMContext):
     data = await state.get_data()
     proto = data['proto']
-    module = import_module_for(proto)
+    module = import_module_for(proto, 'decoder')
     user_dir = TMP_DIR / str(user_id)
     in_image = data['image_path']
     out_text = user_dir / 'decoded_output'
@@ -223,10 +253,19 @@ async def process_decode(user_id: int, state: FSMContext):
         else:
             module.decode(in_image, str(out_text))
 
-        # Якщо файл існує, надішлемо як документ
+        # Якщо файл існує, перевіримо розмір тексту
         if out_text.exists():
-            await bot.send_document(user_id, types.InputFile(str(out_text)))
-            await bot.send_message(user_id, 'Готово — результат надіслано.')
+            try:
+                decoded_text = out_text.read_text(encoding='utf-8', errors='ignore')
+                if len(decoded_text) < 200:
+                    # малий текст — надішлемо повідомленням
+                    await bot.send_message(user_id, f'Декодований текст:\n\n{decoded_text}')
+                else:
+                    # великий текст — надішлемо файлом
+                    await bot.send_document(user_id, FSInputFile(str(out_text)))
+                    await bot.send_message(user_id, 'Декодований текст (>200 символів) надіслано як файл.')
+            except Exception as read_err:
+                await bot.send_message(user_id, f'Помилка читання результату: {read_err}')
         else:
             await bot.send_message(user_id, 'Декодування завершилось без створення файлу (можливо помилка).')
     except Exception as e:
@@ -243,6 +282,7 @@ async def cancel(message: Message, state: FSMContext):
 
 async def main():
     print('Starting bot...')
+    cleanup_old_files(max_age_hours=24)  # Видалити файли старше 24 годин
     await dp.start_polling(bot)
 
 
