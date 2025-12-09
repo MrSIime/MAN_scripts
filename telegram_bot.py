@@ -15,7 +15,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram import Router
 
 # --- Configuration ---
-API_TOKEN = '8037003535:AAHrKOtyOI_kc2Jd9qJMEC_7oVxLWIAIJYw'
+API_TOKEN = ''
 ROOT = Path(__file__).resolve().parent
 TMP_DIR = ROOT / 'tmp'
 TMP_DIR.mkdir(exist_ok=True)

@@ -40,3 +40,4 @@ def encode(image_path: str, text_path: str, output_path: str) -> None:
     img_out = Image.fromarray(new_px, "RGB")
     
     img_out.save(output_path)
+    

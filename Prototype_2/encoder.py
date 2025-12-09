@@ -14,7 +14,6 @@ def encode(image_path: str, text_path: str, output_path: str, key: int) -> None:
     with open(text_path, "r", encoding="utf-8") as f:
         data = f.read().encode("utf-8")
 
-    # Формуємо біти: [4 байти довжини] + [текст]
     length_bytes = len(data).to_bytes(4, "big")
     bits = "".join(f"{b:08b}" for b in length_bytes + data)
 
@@ -24,7 +23,6 @@ def encode(image_path: str, text_path: str, output_path: str, key: int) -> None:
     if len(bits) > len(indices):
         return
 
-    # Перемішуємо індекси на основі введеного ключа
     random.Random(key).shuffle(indices)
 
     for i, b in enumerate(bits):
