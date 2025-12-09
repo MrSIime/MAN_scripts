@@ -15,8 +15,30 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram import Router
 
 # --- Configuration ---
-API_TOKEN = ''
 ROOT = Path(__file__).resolve().parent
+
+# Try to load environment variables from a .env file. Prefer python-dotenv if installed,
+# otherwise fall back to a simple parser for a local .env file in the project root.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=ROOT / '.env')
+except Exception:
+    env_path = ROOT / '.env'
+    if env_path.exists():
+        for raw_line in env_path.read_text(encoding='utf-8').splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, val = line.split('=', 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            os.environ.setdefault(key, val)
+
+# Token lookup order: TELEGRAM_API_TOKEN -> API_TOKEN -> BOT_KEY
+API_TOKEN = os.getenv('TELEGRAM_API_TOKEN') or os.getenv('API_TOKEN') or os.getenv('BOT_KEY')
+if not API_TOKEN:
+    raise RuntimeError('Telegram API token not found. Set TELEGRAM_API_TOKEN in environment or add a .env file.')
+
 TMP_DIR = ROOT / 'tmp'
 TMP_DIR.mkdir(exist_ok=True)
 
